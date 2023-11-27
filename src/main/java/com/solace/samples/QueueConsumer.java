@@ -23,6 +23,8 @@
 
 package com.solace.samples;
 
+import java.io.InputStream;
+import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 
 import javax.jms.Connection;
@@ -39,34 +41,32 @@ import com.solacesystems.jms.SolJmsUtility;
 import com.solacesystems.jms.SupportedProperty;
 
 /**
- * Receives a persistent message from a queue using Solace JMS API implementation.
+ * Receives a persistent message from a queue using Solace JMS API
+ * implementation.
  *
  * The queue used for messages is created on the message broker.
  */
 public class QueueConsumer {
 
-    final String QUEUE_NAME = "Q/tutorial";
+    private static String HOST;
+    private static String VPN;
+    private static String USERNAME;
+    private static String PASSWORD;
+    private static String QUEUE_NAME;
 
     // Latch used for synchronizing between threads
     final CountDownLatch latch = new CountDownLatch(1);
 
-    public void run(String... args) throws Exception {
+    public void run() throws Exception {
 
-        String[] split = args[1].split("@");
-
-        String host = args[0];
-        String vpnName = split[1];
-        String username = split[0];
-        String password = args[2];
-
-        System.out.printf("QueueConsumer is connecting to Solace messaging at %s...%n", host);
+        System.out.printf("QueueConsumer is connecting to Solace messaging at %s...%n", HOST);
 
         // Programmatically create the connection factory using default settings
         SolConnectionFactory connectionFactory = SolJmsUtility.createConnectionFactory();
-        connectionFactory.setHost(host);
-        connectionFactory.setVPN(vpnName);
-        connectionFactory.setUsername(username);
-        connectionFactory.setPassword(password);
+        connectionFactory.setHost(HOST);
+        connectionFactory.setVPN(VPN);
+        connectionFactory.setUsername(USERNAME);
+        connectionFactory.setPassword(PASSWORD);
 
         // Enables persistent queues or topic endpoints to be created dynamically
         // on the router, used when Session.createQueue() is called below
@@ -78,8 +78,8 @@ public class QueueConsumer {
         // Create a non-transacted, client ACK session.
         Session session = connection.createSession(false, SupportedProperty.SOL_CLIENT_ACKNOWLEDGE);
 
-        System.out.printf("Connected to the Solace Message VPN '%s' with client username '%s'.%n", vpnName,
-                username);
+        System.out.printf("Connected to the Solace Message VPN '%s' with client username '%s'.%n", VPN,
+                USERNAME);
 
         // Create the queue programmatically and the corresponding router resource
         // will also be created dynamically because DynamicDurables is enabled.
@@ -100,7 +100,8 @@ public class QueueConsumer {
                     }
                     System.out.printf("Message Content:%n%s%n", SolJmsUtility.dumpMessage(message));
 
-                    // ACK the received message manually because of the set SupportedProperty.SOL_CLIENT_ACKNOWLEDGE above
+                    // ACK the received message manually because of the set
+                    // SupportedProperty.SOL_CLIENT_ACKNOWLEDGE above
                     message.acknowledge();
 
                     latch.countDown(); // unblock the main thread
@@ -121,28 +122,42 @@ public class QueueConsumer {
         // Close everything in the order reversed from the opening order
         // NOTE: as the interfaces below extend AutoCloseable,
         // with them it's possible to use the "try-with-resources" Java statement
-        // see details at https://docs.oracle.com/javase/tutorial/essential/exceptions/tryResourceClose.html
+        // see details at
+        // https://docs.oracle.com/javase/tutorial/essential/exceptions/tryResourceClose.html
         messageConsumer.close();
         session.close();
         connection.close();
     }
 
-    public static void main(String... args) throws Exception {
-        if (args.length != 3 || args[1].split("@").length != 2) {
-            System.out.println("Usage: QueueConsumer <host:port> <client-username@message-vpn> <client-password>");
-            System.out.println();
-            System.exit(-1);
+    private QueueConsumer loadProperties() {
+        Properties prop = new Properties();
+        try (InputStream input = QueueConsumer.class.getClassLoader().getResourceAsStream("config.properties")) {
+            if (input == null) {
+                System.out.println("Sorry, unable to find config.properties");
+                return null;
+            }
+            prop.load(input);
+            // Access properties using getProperty method
+            HOST = prop.getProperty("host");
+            VPN = prop.getProperty("vpn");
+            USERNAME = prop.getProperty("clientUsername");
+            PASSWORD = prop.getProperty("password");
+            QUEUE_NAME = prop.getProperty("queueName");
+
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-        if (args[1].split("@")[0].isEmpty()) {
-            System.out.println("No client-username entered");
-            System.out.println();
-            System.exit(-1);
-        }
-        if (args[1].split("@")[1].isEmpty()) {
-            System.out.println("No message-vpn entered");
-            System.out.println();
-            System.exit(-1);
-        }
-        new QueueConsumer().run(args);
+
+        return this;
     }
+
+    public static void main(String... args) throws Exception {
+        String host = "tcps://broker.dev.apigw.jbinfra-nonprod.net:55443";
+        String vpn = "sfl";
+        String clientUsername = "sfl-consumer";
+        String password = "z3qCix6pX1gPoye5rHx9cDQhTnUGzMFV";
+
+        new QueueConsumer().loadProperties().run();
+    }
+
 }
